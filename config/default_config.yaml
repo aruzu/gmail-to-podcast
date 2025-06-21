@@ -1,0 +1,87 @@
+# Gmail to Podcast - Default Configuration
+# Copy this file to config.yaml and customize for your needs
+
+gmail:
+  # Path to Gmail OAuth credentials
+  credentials_path: "credentials.json"
+  
+  # Token storage
+  token_path: "token.pickle"
+  
+  # Default date range (days back from today)
+  default_days_back: 7
+  
+  # Batch size for API requests
+  batch_size: 500
+
+filtering:
+  # Use LLM for filtering
+  use_llm_filter: true
+  
+  # Include email body in LLM filtering
+  filter_on_body: false
+  
+  # Default filter prompt
+  default_filter: "Keep newsletters and important updates"
+
+output:
+  # Base output directory
+  base_dir: "output"
+  
+  # Directory name patterns
+  # Available variables: {date}, {after}, {before}, {mode}
+  eml_dir_pattern: "{date}_eml"
+  markdown_dir_pattern: "{date}_markdown"
+  podcast_dir_pattern: "{date}_podcast"
+  
+  # Temporary files directory
+  temp_dir: "."
+
+podcast:
+  # Default duration in minutes
+  default_duration: 30
+  
+  # Script generation settings
+  words_per_minute: 150
+  
+  # Voice settings for TTS
+  voices:
+    sarah:
+      name: "Kore"
+      gender: "female"
+      style: "analytical"
+    michael:
+      name: "Puck"
+      gender: "male"
+      style: "enthusiastic"
+  
+  # Audio settings
+  audio:
+    format: "mp3"
+    bitrate: "192k"
+    
+  # Video settings
+  video:
+    enabled: true
+    resolution: [1920, 1080]
+    fps: 30
+
+# Model configurations
+models:
+  gemini:
+    default_model: "gemini-2.5-flash"
+    script_model: "gemini-2.5-flash"
+    tts_model: "gemini-2.5-flash-preview-tts"
+    temperature: 0.7
+
+# Processing options
+processing:
+  # Delay between processing items (seconds)
+  delay_between_emails: 0.5
+  delay_between_videos: 2
+  
+  # Skip existing files
+  skip_existing: true
+  
+  # Parallel processing
+  parallel_downloads: 5

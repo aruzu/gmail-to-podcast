@@ -1,0 +1,52 @@
+# Environment variables
+  .env
+  .env.local
+
+  # Google credentials
+  credentials.json
+  token.pickle
+
+  # Personal configuration
+  config/config.yaml
+  config/senders/my_*.json
+
+  # Output directories
+  output/
+  *_eml/
+  *_markdown/
+  *_podcast/
+  *_sources/
+  test_output/
+
+  # Temporary files
+  *.txt
+  !requirements*.txt
+  *.log
+  *.pickle
+
+  # Python
+  __pycache__/
+  *.py[cod]
+  *$py.class
+  *.so
+  .Python
+  env/
+  venv/
+  .venv/
+
+  # IDE
+  .vscode/
+  .idea/
+  *.swp
+  *.swo
+  *~
+
+  # OS
+  .DS_Store
+  Thumbs.db
+
+  # Audio/Video files
+  *.mp3
+  *.mp4
+  *.wav
+  *.m4a

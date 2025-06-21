@@ -1,0 +1,24 @@
+{
+  "example_tech": {
+    "description": "Example tech newsletter senders",
+    "senders": [
+      "newsletter@example-tech.com",
+      "updates@example-dev.org",
+      "weekly@example-code.io"
+    ]
+  },
+  "example_news": {
+    "description": "Example news digest senders", 
+    "senders": [
+      "daily@example-news.com",
+      "breaking@example-media.org"
+    ]
+  },
+  "example_productivity": {
+    "description": "Example productivity newsletter senders",
+    "senders": [
+      "tips@example-productivity.com",
+      "weekly@example-habits.org"
+    ]
+  }
+}
