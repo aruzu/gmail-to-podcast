@@ -1,5 +1,10 @@
 # Gmail to Podcast
 
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+  [![Gemini API](https://img.shields.io/badge/Gemini-API-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+  ![Status: Experimental](https://img.shields.io/badge/Status-Experimental-orange.svg)
+
 Transform your Gmail newsletters into engaging podcast episodes using AI. This tool fetches emails from specified senders, filters them intelligently, converts them to markdown, and generates natural-sounding podcast conversations.
 
 > ⚠️ **Note**: The podcast generation feature is experimental and the quality may vary. This is a work in progress and improvements are ongoing.
