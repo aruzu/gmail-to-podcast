@@ -24,19 +24,11 @@ except ImportError:
         print("Using standard podcast script generator (legacy path)")
 
 try:
-    from scripts.podcast.generate_podcast_audio_v3 import parse_podcast_script, create_podcast_audio, combine_audio_segments
-    print("Using advanced podcast audio generator (v3)")
+    from scripts.podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
+    print("Using multi-speaker podcast audio generator")
 except ImportError:
-    try:
-        from scripts.podcast.generate_podcast_audio_v2 import parse_podcast_script, create_podcast_audio, combine_audio_segments
-        print("Using improved podcast audio generator (v2)")
-    except ImportError:
-        try:
-            from scripts.podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
-            print("Using standard podcast audio generator")
-        except ImportError:
-            from generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
-            print("Using standard podcast audio generator (legacy path)")
+    from generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
+    print("Using multi-speaker podcast audio generator (legacy path)")
 from google import genai
 try:
     from scripts.podcast.generate_podcast_video import create_podcast_video
