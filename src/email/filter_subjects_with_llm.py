@@ -14,17 +14,24 @@ OUTPUT_FILE = 'filtered_message_ids.txt'
 
 
 def authenticate_gmail():
+    # Get paths relative to script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
+    config_dir = os.path.join(project_root, 'config')
+    token_path = os.path.join(config_dir, 'token.pickle')
+    credentials_path = os.path.join(config_dir, 'credentials.json')
+    
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
+    if os.path.exists(token_path):
+        with open(token_path, 'rb') as token:
             creds = pickle.load(token)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
+        with open(token_path, 'wb') as token:
             pickle.dump(creds, token)
     return build('gmail', 'v1', credentials=creds)
 

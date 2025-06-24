@@ -13,18 +13,40 @@ OUTPUT_FILE = 'fetched_message_ids.txt'
 
 
 def authenticate_gmail():
+    # Get paths relative to script location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
+    config_dir = os.path.join(project_root, 'config')
+    token_path = os.path.join(config_dir, 'token.pickle')
+    credentials_path = os.path.join(config_dir, 'credentials.json')
+    
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
+    if os.path.exists(token_path):
+        with open(token_path, 'rb') as token:
             creds = pickle.load(token)
+    
+    # Check if credentials need refresh
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                # If refresh fails (token revoked/expired), delete token and re-authenticate
+                print(f"Token refresh failed: {e}")
+                print("Removing expired token and re-authenticating...")
+                if os.path.exists(token_path):
+                    os.remove(token_path)
+                creds = None
+        
+        # If no valid creds at this point, run the OAuth flow
+        if not creds:
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
+        
+        # Save the credentials for next run
+        with open(token_path, 'wb') as token:
             pickle.dump(creds, token)
+    
     return build('gmail', 'v1', credentials=creds)
 
 
