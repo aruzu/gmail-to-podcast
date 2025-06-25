@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 INPUT_FILE = 'filtered_message_ids.txt'
 
 def authenticate_gmail():
@@ -59,9 +59,33 @@ def download_eml(service, msg_id, out_dir):
         print(f"Failed to download {msg_id}: {e}")
         return False
 
+def mark_as_read_and_archive(service, msg_id):
+    """Mark email as read and archive it (remove from INBOX)."""
+    try:
+        # Mark as read by removing UNREAD label
+        service.users().messages().modify(
+            userId='me',
+            id=msg_id,
+            body={'removeLabelIds': ['UNREAD']}
+        ).execute()
+        
+        # Archive by removing INBOX label
+        service.users().messages().modify(
+            userId='me',
+            id=msg_id,
+            body={'removeLabelIds': ['INBOX']}
+        ).execute()
+        
+        return True
+    except Exception as e:
+        print(f"Failed to mark as read/archive {msg_id}: {e}")
+        return False
+
 def main():
     parser = argparse.ArgumentParser(description='Download .eml files for filtered Gmail messages.')
     parser.add_argument('--outdir', type=str, default='s2e2_sources/', help='Output directory for .eml files')
+    parser.add_argument('--mark-processed', action='store_true', 
+                        help='Mark emails as read and archive them after downloading')
     args = parser.parse_args()
     out_dir = args.outdir
     os.makedirs(out_dir, exist_ok=True)
@@ -78,7 +102,17 @@ def main():
         print(f"[{i}/{len(msg_ids)}] Downloading {msg_id}.eml ...", end=' ')
         success = download_eml(service, msg_id, out_dir)
         if success:
-            print("Done.")
+            print("Done.", end='')
+            
+            # Mark as read and archive if requested
+            if args.mark_processed:
+                print(" Marking as read and archiving...", end=' ')
+                if mark_as_read_and_archive(service, msg_id):
+                    print("Done.")
+                else:
+                    print("Failed.")
+            else:
+                print()
         else:
             print("Failed.")
 

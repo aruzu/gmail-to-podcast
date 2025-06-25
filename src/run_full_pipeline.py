@@ -200,7 +200,7 @@ def fetch_and_filter_ids(service, senders, after, before, filter_description, te
             f.write(mid + '\n')
     return relevant_ids, temp_path
 
-def download_emls(service, msg_ids, out_dir):
+def download_emls(service, msg_ids, out_dir, mark_processed=False):
     os.makedirs(out_dir, exist_ok=True)
     for i, msg_id in enumerate(msg_ids, 1):
         out_path = os.path.join(out_dir, f'{msg_id}.eml')
@@ -210,7 +210,23 @@ def download_emls(service, msg_ids, out_dir):
         print(f"[{i}/{len(msg_ids)}] Downloading {msg_id}.eml ...", end=' ')
         success = download_eml(service, msg_id, out_dir)
         if success:
-            print("Done.")
+            print("Done.", end='')
+            
+            # Mark as read and archive if requested
+            if mark_processed:
+                print(" Marking as read and archiving...", end=' ')
+                try:
+                    # Mark as read by removing UNREAD label and archive by removing INBOX label
+                    service.users().messages().modify(
+                        userId='me',
+                        id=msg_id,
+                        body={'removeLabelIds': ['UNREAD', 'INBOX']}
+                    ).execute()
+                    print("Done.")
+                except Exception as e:
+                    print(f"Failed: {e}")
+            else:
+                print()
         else:
             print("Failed.")
 
@@ -322,6 +338,8 @@ Examples:
     
     # Other options
     parser.add_argument('--tempdir', type=str, default='.', help='Directory for temp files (default: current dir)')
+    parser.add_argument('--mark-processed', action='store_true', 
+                        help='Mark emails as read and archive them after processing')
     
     args = parser.parse_args()
     
@@ -374,7 +392,7 @@ Examples:
         )
         # Step 3: Download .eml files
         print(f"Downloading .eml files to {eml_dir}...")
-        download_emls(service, relevant_ids, eml_dir)
+        download_emls(service, relevant_ids, eml_dir, args.mark_processed)
         # Step 4: Convert to Markdown
         print(f"Converting .eml files to Markdown in {md_dir}...")
         convert_all_eml_to_markdown(eml_dir, md_dir)

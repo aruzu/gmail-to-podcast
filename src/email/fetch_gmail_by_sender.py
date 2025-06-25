@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request
 import argparse
 
 # If modifying these SCOPES, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 SENDERS = ['thezvi@substack.com', 'thebatch@deeplearning.ai']
 OUTPUT_FILE = 'fetched_message_ids.txt'
 
