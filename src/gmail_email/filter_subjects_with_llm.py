@@ -63,8 +63,13 @@ Should this email be kept? Answer YES or NO and explain briefly why.
             temperature=0
         )
     )
-    answer = response.text
-    return 'YES' in answer.upper()
+    try:
+        answer = response.text
+        return 'YES' in answer.upper()
+    except ValueError as e:
+        print(f"⚠️  LLM filtering issue: {e}")
+        print("Defaulting to include email (fail-safe)")
+        return True  # Include by default if filtering fails
 
 
 def main():
