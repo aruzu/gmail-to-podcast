@@ -41,39 +41,102 @@ def generate_podcast_script(markdown_content, duration_minutes=30):
     max_tokens = min(8000, int(target_words * 1.5))  # Cap at 8000 tokens for API limits
     
     prompt = f"""
-You are a podcast script writer. Create a {duration_minutes}-minute conversational podcast script between two hosts discussing the content provided below. 
+You are a podcast script writer creating a {duration_minutes}-minute conversational podcast in the style of NotebookLM's Audio Overview.
 
-The podcast should be in the style of NotebookLM's Audio Overview - engaging, informative, and conversational. The two hosts should:
-- Be named Sarah (female) and Michael (male)
-- Have distinct personalities (Sarah is more analytical, Michael is more enthusiastic)
-- Discuss the key themes, insights, and interesting points from the articles
-- Ask each other questions and build on each other's points
-- Use natural conversation flow with occasional interruptions, agreements, and clarifications
-- Include smooth transitions between topics
-- End with a thoughtful summary and key takeaways
+CRITICAL REQUIREMENTS:
+1. Create natural, dynamic conversation between two hosts with distinct personalities
+2. Sarah (analytical): asks probing questions, provides context, thinks deeply
+3. Michael (enthusiastic): makes connections, adds energy, gets excited about insights
+4. Use quick back-and-forth exchanges - most responses should be 1-3 sentences
+5. Include natural interruptions, overlapping dialogue, and reactions ("mm-hmm", "yeah", "exactly")
+6. NO explicit pause markers - let conversation flow naturally
+7. Include emotional variety - surprise, curiosity, agreement, thoughtfulness
 
-Format the script clearly with:
-- [SARAH]: for host Sarah's dialogue
-- [MICHAEL]: for host Michael's dialogue
-- [PAUSE] for natural pauses
-- [MUSIC] for intro/outro music cues
+Format the script EXACTLY like this:
+[SARAH]: Text here
+[MICHAEL]: Text here
+
+CONVERSATION FLOW:
+- Start with brief introductions
+- Move through content with natural transitions
+- Build excitement and engagement throughout
+- End with thoughtful summary and key takeaways
+- Make it sound like a genuine conversation between two intelligent people discovering insights together
 
 Content to discuss:
 {combined_content}
 
-Create an engaging {duration_minutes}-minute podcast script (approximately {target_words} words) that covers the most interesting and important points from this content. Adjust the depth of discussion and number of topics covered to fit the {duration_minutes}-minute timeframe.
+Create an engaging {duration_minutes}-minute podcast script (approximately {target_words} words) that feels like an authentic, dynamic conversation. Focus on making the hosts sound genuinely excited about the material and engaged with each other.
 """
 
     model = genai.GenerativeModel('gemini-2.5-flash')
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.7
-        )
-    )
     
-    return response.text
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=max_tokens,
+                temperature=0.7
+            )
+        )
+        
+        # Check if response was blocked by safety filters
+        if hasattr(response, "candidates") and response.candidates and getattr(response.candidates[0], "finish_reason", None) == 2:
+            print("⚠️  Content was blocked by safety filters. Trying with adjusted prompt...")
+            
+            # Fallback with simpler, safer prompt
+            safer_prompt = f"""
+Create a {duration_minutes}-minute conversational podcast script between two hosts discussing technology news and insights.
+
+Format:
+[SARAH] (female host Sarah)
+[MICHAEL] (male host Michael)
+
+The hosts should introduce themselves at the beginning, then have a natural conversation about the key points from the articles provided. Keep it informative but engaging.
+
+Content summary to discuss:
+{combined_content[:10000]}
+
+Generate approximately {target_words} words.
+"""
+            
+            response = model.generate_content(
+                safer_prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=0.7
+                )
+            )
+        
+        if hasattr(response, 'text') and response.text:
+            return response.text
+        else:
+            print("⚠️  No text response received. Using fallback.")
+            return generate_fallback_script(duration_minutes)
+            
+    except Exception as e:
+        print(f"Error generating podcast script: {e}")
+        return generate_fallback_script(duration_minutes)
+
+def generate_fallback_script(duration_minutes):
+    """Generate a basic fallback script when AI generation fails"""
+    return f"""[SARAH] Welcome to our tech news deep dive. I'm Sarah.
+
+[MICHAEL] And I'm Michael. We've got some interesting developments to discuss today.
+
+[SARAH] That's right. Unfortunately, we encountered some technical difficulties processing the full content, but let's talk about what we can.
+
+[MICHAEL] Technology is moving at such an incredible pace these days.
+
+[SARAH] It really is. Every week brings new breakthroughs and challenges.
+
+[MICHAEL] The implications for how we work and live are fascinating to consider.
+
+[SARAH] Absolutely. It's important to stay informed about these developments.
+
+[MICHAEL] Well, that's all for today's episode. Thanks for listening!
+
+[SARAH] See you next time!"""
 
 def save_podcast_script(script, output_path):
     """Save the podcast script to a file"""

@@ -90,8 +90,30 @@ def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
         wf.setframerate(rate)
         wf.writeframes(pcm)
 
+def split_transcript(transcript, max_chars=5000):
+    """Split long transcript into smaller chunks for TTS processing"""
+    if len(transcript) <= max_chars:
+        return [transcript]
+    
+    chunks = []
+    lines = transcript.split('\n')
+    current_chunk = ""
+    
+    for line in lines:
+        if len(current_chunk) + len(line) + 1 <= max_chars:
+            current_chunk += line + '\n'
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = line + '\n'
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
 def generate_multispeaker_podcast(transcript, output_path):
-    """Generate podcast audio using Gemini TTS multi-speaker API"""
+    """Generate podcast audio using Gemini TTS multi-speaker API with chunking support"""
     
     try:
         print("🎤 Generating multi-speaker podcast audio...")
@@ -101,78 +123,117 @@ def generate_multispeaker_podcast(transcript, output_path):
         # Create client
         client = google_genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
         
-        # Generate with multi-speaker configuration
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=transcript,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                        speaker_voice_configs=[
-                            types.SpeakerVoiceConfig(
-                                speaker='Sarah',
-                                voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name='zephyr',
-                                    )
-                                )
-                            ),
-                            types.SpeakerVoiceConfig(
-                                speaker='Michael',
-                                voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name='puck',
-                                    )
-                                )
-                            ),
-                        ]
+        # Split transcript into chunks if too long
+        chunks = split_transcript(transcript)
+        audio_chunks = []
+        
+        print(f"📝 Processing {len(chunks)} audio chunk(s)...")
+        
+        for i, chunk in enumerate(chunks):
+            print(f"🎵 Generating chunk {i+1}/{len(chunks)}...")
+            
+            try:
+                # Generate with multi-speaker configuration
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash-preview-tts",
+                    contents=chunk,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                                speaker_voice_configs=[
+                                    types.SpeakerVoiceConfig(
+                                        speaker='Sarah',
+                                        voice_config=types.VoiceConfig(
+                                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                                voice_name='zephyr',
+                                            )
+                                        )
+                                    ),
+                                    types.SpeakerVoiceConfig(
+                                        speaker='Michael',
+                                        voice_config=types.VoiceConfig(
+                                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                                voice_name='puck',
+                                            )
+                                        )
+                                    ),
+                                ]
+                            )
+                        )
                     )
                 )
-            )
-        )
+                
+                # Extract audio data
+                if response.candidates and len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    if candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
+                        part = candidate.content.parts[0]
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            # Save chunk as temporary WAV file
+                            chunk_wav_path = output_path.replace('.mp3', f'_chunk_{i}.wav')
+                            wave_file(chunk_wav_path, part.inline_data.data)
+                            audio_chunks.append(chunk_wav_path)
+                            print(f"✅ Generated chunk {i+1}: {chunk_wav_path}")
+                        else:
+                            print(f"⚠️  No audio data in chunk {i+1}")
+                    else:
+                        print(f"⚠️  No content in chunk {i+1}")
+                else:
+                    print(f"⚠️  No candidates in chunk {i+1}")
+                    
+            except Exception as e:
+                print(f"⚠️  Error generating chunk {i+1}: {e}")
+                continue
         
-        # Extract audio data
-        if response.candidates and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            if candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
-                part = candidate.content.parts[0]
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    # Save as WAV first
-                    wav_path = output_path.replace('.mp3', '.wav')
-                    wave_file(wav_path, part.inline_data.data)
-                    
-                    print(f"✅ Generated multi-speaker audio: {wav_path}")
-                    
-                    # Convert to MP3 if needed
-                    if output_path.endswith('.mp3') and AUDIO_AVAILABLE:
-                        try:
-                            audio = AudioSegment.from_wav(wav_path)
-                            # Normalize audio levels
-                            audio = normalize(audio)
-                            # Speed up by 10% for faster pacing
-                            audio = audio._spawn(audio.raw_data, overrides={
-                                "frame_rate": int(audio.frame_rate * 1.1)
-                            }).set_frame_rate(audio.frame_rate)
-                            
-                            audio.export(output_path, format="mp3", bitrate="192k")
-                            print(f"✅ Converted to MP3 with 10% speed increase: {output_path}")
-                            
-                            # Calculate duration
-                            duration = len(audio) / 1000
-                            print(f"⏱️  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
-                        except Exception as e:
-                            print(f"⚠️  Could not convert to MP3: {e}")
-                    
-                    return True
+        if not audio_chunks:
+            print("❌ No audio chunks generated successfully")
+            return False
         
-        print("❌ No audio data found in response")
-        return False
+        # Combine all chunks and convert to MP3
+        if AUDIO_AVAILABLE:
+            try:
+                combined_audio = AudioSegment.empty()
+                
+                for chunk_path in audio_chunks:
+                    chunk_audio = AudioSegment.from_wav(chunk_path)
+                    combined_audio += chunk_audio
+                    # Clean up temporary file
+                    os.remove(chunk_path)
+                
+                # Normalize and speed up the combined audio
+                combined_audio = normalize(combined_audio)
+                # Speed up by 10% for faster pacing
+                combined_audio = combined_audio._spawn(combined_audio.raw_data, overrides={
+                    "frame_rate": int(combined_audio.frame_rate * 1.1)
+                }).set_frame_rate(combined_audio.frame_rate)
+                
+                combined_audio.export(output_path, format="mp3", bitrate="192k")
+                print(f"✅ Final podcast saved at: {output_path}")
+                
+                # Calculate duration
+                duration = len(combined_audio) / 1000
+                print(f"⏱️  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+                
+                return True
+                
+            except Exception as e:
+                print(f"❌ Error combining audio chunks: {e}")
+                # Clean up temporary files
+                for chunk_path in audio_chunks:
+                    if os.path.exists(chunk_path):
+                        os.remove(chunk_path)
+                return False
+        else:
+            print("❌ Audio processing not available (pydub required)")
+            return False
         
     except Exception as e:
         print(f"❌ Error generating multi-speaker audio: {e}")
         if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
             print("   ⚠️  Hit quota limit. Try again later.")
+        elif "INVALID_ARGUMENT" in str(e):
+            print("   ⚠️  Invalid input. Check transcript format.")
         return False
 
 # Backward compatibility functions for pipeline
