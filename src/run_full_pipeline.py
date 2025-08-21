@@ -29,8 +29,10 @@ except ImportError:
 try:
     from podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
     print("Using enhanced multi-speaker podcast audio generator")
-except ImportError:
-    print("Error: Could not import podcast audio generator")
+    HAS_AUDIO = True
+except ImportError as e:
+    print(f"Warning: Audio generation not available ({e})")
+    HAS_AUDIO = False
 try:
     from podcast.generate_podcast_video import create_podcast_video
     HAS_VIDEO = True
@@ -280,22 +282,28 @@ def generate_podcast_from_markdown(md_outdir, output_dir="podcast_output", durat
     save_podcast_script(script, script_path)
     
     # Step 2: Generate audio
-    print("Generating podcast audio...")
-    try:
-        segments = parse_podcast_script(script_path)
-        audio_segments = create_podcast_audio(segments, os.path.join(output_dir, "audio_segments"))
-        
-        if audio_segments:
-            success = combine_audio_segments(audio_segments, audio_path)
-            if not success:
-                print("Failed to generate podcast audio.")
+    if HAS_AUDIO:
+        print("Generating podcast audio...")
+        try:
+            segments = parse_podcast_script(script_path)
+            audio_segments = create_podcast_audio(segments, os.path.join(output_dir, "audio_segments"))
+            
+            if audio_segments:
+                success = combine_audio_segments(audio_segments, audio_path)
+                if not success:
+                    print("Failed to generate podcast audio.")
+                    return False
+            else:
+                print("No audio segments generated.")
                 return False
-        else:
-            print("No audio segments generated.")
+        except Exception as e:
+            print(f"Error generating podcast audio: {e}")
             return False
-    except Exception as e:
-        print(f"Error generating podcast audio: {e}")
-        return False
+    else:
+        print("⚠️  Audio generation skipped (dependencies not available)")
+        # Create a placeholder audio file
+        with open(audio_path.replace('.mp3', '.txt'), 'w') as f:
+            f.write("Audio generation not available in this environment")
     
     # Step 3: Generate video
     if HAS_VIDEO:

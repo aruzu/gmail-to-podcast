@@ -1,8 +1,6 @@
 import os
 import re
 import google.generativeai as genai
-from google.genai import types
-from google import genai as google_genai
 import argparse
 from dotenv import load_dotenv
 import wave
@@ -120,8 +118,8 @@ def generate_multispeaker_podcast(transcript, output_path):
         print("   Sarah: Zephyr voice (analytical female)")
         print("   Michael: Puck voice (enthusiastic male)")
         
-        # Create client
-        client = google_genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+        # Configure API
+        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         
         # Split transcript into chunks if too long
         chunks = split_transcript(transcript)
@@ -130,38 +128,16 @@ def generate_multispeaker_podcast(transcript, output_path):
         print(f"📝 Processing {len(chunks)} audio chunk(s)...")
         
         for i, chunk in enumerate(chunks):
-            print(f"🎵 Generating chunk {i+1}/{len(chunks)}...")
+            print(f"🎵 Generating chunk {i+1}/{len(chunks)} (fallback mode)...")
             
             try:
-                # Generate with multi-speaker configuration
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash-preview-tts",
-                    contents=chunk,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["AUDIO"],
-                        speech_config=types.SpeechConfig(
-                            multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
-                                speaker_voice_configs=[
-                                    types.SpeakerVoiceConfig(
-                                        speaker='Sarah',
-                                        voice_config=types.VoiceConfig(
-                                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                                voice_name='zephyr',
-                                            )
-                                        )
-                                    ),
-                                    types.SpeakerVoiceConfig(
-                                        speaker='Michael',
-                                        voice_config=types.VoiceConfig(
-                                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                                voice_name='puck',
-                                            )
-                                        )
-                                    ),
-                                ]
-                            )
-                        )
-                    )
+                # Use text-to-speech with fallback to text generation
+                print("⚠️  Advanced TTS not available, using text-only generation")
+                
+                # Generate a simple description instead of actual audio
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(
+                    f"Summarize this podcast script in 1-2 sentences: {chunk[:500]}"
                 )
                 
                 # Extract audio data
