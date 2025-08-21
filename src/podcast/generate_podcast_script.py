@@ -1,6 +1,8 @@
 import os
 import glob
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+import google.generativeai as fallback_genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -69,20 +71,58 @@ Content to discuss:
 Create an engaging {duration_minutes}-minute podcast script (approximately {target_words} words) that feels like an authentic, dynamic conversation. Focus on making the hosts sound genuinely excited about the material and engaged with each other.
 """
 
-    genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    api_key = os.getenv('GEMINI_API_KEY')
     
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                max_output_tokens=max_tokens,
-                temperature=0.7
-            )
+        # Try new Google GenAI SDK first (like main branch)
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
         )
+        
+        # Check if response was blocked by safety filters (like main branch)
+        if hasattr(response, "candidates") and response.candidates and getattr(response.candidates[0], "finish_reason", None) == 2:
+            print("⚠️  Content was blocked by safety filters. Trying with adjusted prompt...")
+            safer_prompt = f"""
+Create a {duration_minutes}-minute conversational podcast script between two hosts discussing technology news and insights.
+
+Format:
+[SARAH] (female host Sarah)
+[MICHAEL] (male host Michael)
+
+The hosts should introduce themselves at the beginning, then have a natural conversation about the key points from the articles provided. Keep it informative but engaging.
+
+Content summary to discuss:
+{combined_content[:10000]}
+
+Generate approximately {target_words} words.
+"""
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=safer_prompt
+            )
+            
     except Exception as e:
-        print(f"Error generating script: {e}")
-        return generate_fallback_script(duration_minutes)
+        print(f"⚠️  New SDK failed: {e}")
+        # Fallback to old SDK approach
+        try:
+            print("Trying fallback SDK approach...")
+            fallback_genai.configure(api_key=api_key)
+            model = fallback_genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(
+                f"""Create a {duration_minutes}-minute podcast script with hosts Sarah and Michael.
+                
+Format: [SARAH] and [MICHAEL] speakers.
+Content: {combined_content[:5000]}""",
+                generation_config=fallback_genai.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=0.7
+                )
+            )
+        except Exception as e2:
+            print(f"Error with fallback SDK: {e2}")
+            return generate_fallback_script(duration_minutes)
     
     # Extract text from response
     try:
