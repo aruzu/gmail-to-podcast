@@ -1,14 +1,7 @@
 import os
 import glob
+import google.generativeai as genai
 from dotenv import load_dotenv
-
-# Try new Google GenAI SDK first, fall back to legacy
-try:
-    from google import genai
-    USE_NEW_SDK = True
-except ImportError:
-    import google.generativeai as genai
-    USE_NEW_SDK = False
 
 load_dotenv()
 
@@ -76,33 +69,20 @@ Content to discuss:
 Create an engaging {duration_minutes}-minute podcast script (approximately {target_words} words) that feels like an authentic, dynamic conversation. Focus on making the hosts sound genuinely excited about the material and engaged with each other.
 """
 
-    if USE_NEW_SDK:
-        # Use new SDK
-        client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
+    genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=max_tokens,
+                temperature=0.7
             )
-        except Exception as e:
-            print(f"Error with new SDK: {e}")
-            return generate_fallback_script(duration_minutes)
-    else:
-        # Use legacy SDK
-        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        try:
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    max_output_tokens=max_tokens,
-                    temperature=0.7
-                )
-            )
-        except Exception as e:
-            print(f"Error with legacy SDK: {e}")
-            return generate_fallback_script(duration_minutes)
+        )
+    except Exception as e:
+        print(f"Error generating script: {e}")
+        return generate_fallback_script(duration_minutes)
     
     # Extract text from response
     try:
