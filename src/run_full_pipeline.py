@@ -15,10 +15,10 @@ import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-from email.fetch_gmail_by_sender import authenticate_gmail, fetch_message_ids, fetch_message_ids_combined
-from email.filter_subjects_with_llm import fetch_subject, ask_llm
-from email.download_eml_files import download_eml
-from email.eml_to_markdown import convert_all_eml_to_markdown
+from email_processing.fetch_gmail_by_sender import authenticate_gmail, fetch_message_ids, fetch_message_ids_combined
+from email_processing.filter_subjects_with_llm import fetch_subject, ask_llm
+from email_processing.download_eml_files import download_eml
+from email_processing.eml_to_markdown import convert_all_eml_to_markdown
 # Import podcast generation functions
 try:
     from podcast.generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
