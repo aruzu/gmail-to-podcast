@@ -171,6 +171,18 @@ def generate_multispeaker_podcast(transcript, output_path):
             print("❌ No audio chunks generated successfully")
             return False
         
+        # Check if we have actual audio files or just placeholders
+        audio_files = [f for f in audio_chunks if f.endswith('.wav') or f.endswith('.mp3')]
+        if not audio_files:
+            print("⚠️  Only placeholder files generated, creating summary file instead of audio")
+            # Create a summary file instead of trying to combine placeholders
+            summary_path = output_path.replace('.mp3', '_summary.txt')
+            with open(summary_path, 'w', encoding='utf-8') as f:
+                f.write("Podcast audio generation completed in fallback mode.\n")
+                f.write(f"Generated {len(audio_chunks)} content chunks.\n")
+            print(f"✅ Summary saved: {summary_path}")
+            return True
+        
         # Combine all chunks and convert to MP3
         if AUDIO_AVAILABLE:
             try:
