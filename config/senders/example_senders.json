@@ -20,5 +20,23 @@
       "tips@example-productivity.com",
       "weekly@example-habits.org"
     ]
+  },
+  "example_ai_labels": {
+    "description": "AI-related emails by Gmail labels",
+    "labels": [
+      "AI News",
+      "Machine Learning",
+      "Tech Updates"
+    ]
+  },
+  "example_mixed": {
+    "description": "Mixed configuration with both senders and labels",
+    "senders": [
+      "important@newsletter.com"
+    ],
+    "labels": [
+      "Important",
+      "Research"
+    ]
   }
 }

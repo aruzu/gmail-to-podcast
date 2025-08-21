@@ -85,6 +85,12 @@ class ConfigLoader:
                 return preset_data
         return None
     
+    def get_preset_config(self, preset_name: str) -> Optional[Dict[str, Any]]:
+        """Get complete preset configuration including senders and labels."""
+        if preset_name in self.senders:
+            return self.senders[preset_name]
+        return None
+    
     def get_all_presets(self) -> List[str]:
         """Get list of all available preset names."""
         return list(self.senders.keys())

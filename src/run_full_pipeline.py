@@ -7,39 +7,37 @@ from datetime import datetime
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.email.fetch_gmail_by_sender import authenticate_gmail, fetch_message_ids
-from scripts.email.filter_subjects_with_llm import fetch_subject, ask_llm
-from scripts.email.download_eml_files import download_eml
-from scripts.email.eml_to_markdown import convert_all_eml_to_markdown
-# Try to import v2 versions first for better NotebookLM-style output
+from config_loader import get_config
+
+import sys
+import os
+# Add the src directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+from email.fetch_gmail_by_sender import authenticate_gmail, fetch_message_ids, fetch_message_ids_combined
+from email.filter_subjects_with_llm import fetch_subject, ask_llm
+from email.download_eml_files import download_eml
+from email.eml_to_markdown import convert_all_eml_to_markdown
+# Import podcast generation functions
 try:
-    from scripts.podcast.generate_podcast_script_v2 import read_markdown_files, generate_podcast_script, save_podcast_script
-    print("Using improved podcast script generator (v2)")
+    from podcast.generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
+    print("Using enhanced podcast script generator")
 except ImportError:
-    try:
-        from scripts.podcast.generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
-        print("Using standard podcast script generator")
-    except ImportError:
-        from generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
-        print("Using standard podcast script generator (legacy path)")
+    print("Error: Could not import podcast script generator")
 
 try:
-    from scripts.podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
-    print("Using multi-speaker podcast audio generator")
+    from podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
+    print("Using enhanced multi-speaker podcast audio generator")
 except ImportError:
-    from generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
-    print("Using multi-speaker podcast audio generator (legacy path)")
-from google import genai
+    print("Error: Could not import podcast audio generator")
 try:
-    from scripts.podcast.generate_podcast_video import create_podcast_video
+    from podcast.generate_podcast_video import create_podcast_video
     HAS_VIDEO = True
+    print("Video generation available")
 except ImportError:
-    try:
-        from generate_podcast_video import create_podcast_video
-        HAS_VIDEO = True
-    except ImportError:
-        HAS_VIDEO = False
-        print("Warning: moviepy not installed. Video generation will be skipped.")
+    HAS_VIDEO = False
+    print("Warning: moviepy not installed. Video generation will be skipped.")
 import google.generativeai as genai
 from dotenv import load_dotenv
 from googleapiclient.errors import HttpError
@@ -84,6 +82,36 @@ for preset_senders in SENDER_PRESETS.values():
     if preset_senders:  # Skip the empty 'all' list
         all_senders.update(preset_senders)
 SENDER_PRESETS['all'] = sorted(list(all_senders))
+
+# Load configuration system for additional presets with label support
+config = get_config()
+
+def get_preset_config(preset_name):
+    """Get preset configuration from both hardcoded and config sources"""
+    # First check config system (supports labels)
+    config_preset = config.get_preset_config(preset_name)
+    if config_preset:
+        return {
+            'senders': config_preset.get('senders', []),
+            'labels': config_preset.get('labels', []),
+            'description': config_preset.get('description', '')
+        }
+    
+    # Fall back to hardcoded presets (senders only)
+    if preset_name in SENDER_PRESETS:
+        return {
+            'senders': SENDER_PRESETS[preset_name],
+            'labels': [],
+            'description': f"Hardcoded preset: {preset_name}"
+        }
+    
+    return None
+
+def get_all_preset_names():
+    """Get all available preset names from both sources"""
+    names = set(SENDER_PRESETS.keys())
+    names.update(config.get_all_presets())
+    return sorted(list(names))
 
 def parse_date(date_str):
     """Parse date from various formats to YYYY/MM/DD format required by Gmail API"""
@@ -160,10 +188,13 @@ def fetch_body(service, msg_id):
         print(f"Failed to fetch body for {msg_id}: {e}")
         return ''
 
-def fetch_and_filter_ids(service, senders, after, before, filter_description, temp_dir, skip_llm_filter, llm_filter_on_body):
+def fetch_and_filter_ids(service, senders, labels, after, before, filter_description, temp_dir, skip_llm_filter, llm_filter_on_body):
     # Step 1: Fetch message IDs
     print("Fetching message IDs from Gmail...")
-    message_ids = fetch_message_ids(service, senders, after=after, before=before)
+    if senders or labels:
+        message_ids = fetch_message_ids_combined(service, senders=senders, labels=labels, after=after, before=before)
+    else:
+        message_ids = []
     print(f"Fetched {len(message_ids)} message IDs.")
     if skip_llm_filter:
         print("Skipping LLM filtering. All fetched message IDs will be used.")
@@ -293,8 +324,21 @@ def generate_podcast_from_markdown(md_outdir, output_dir="podcast_output", durat
         return True
 
 def main():
-    # Build preset list for help text
-    preset_list = "\n".join([f"  {name}: {len(senders)} senders" for name, senders in SENDER_PRESETS.items()])
+    # Build preset list for help text (include both hardcoded and config presets)
+    all_preset_names = get_all_preset_names()
+    preset_list = []
+    for name in all_preset_names:
+        preset_config = get_preset_config(name)
+        if preset_config:
+            sender_count = len(preset_config['senders'])
+            label_count = len(preset_config['labels'])
+            if sender_count and label_count:
+                preset_list.append(f"  {name}: {sender_count} senders, {label_count} labels")
+            elif sender_count:
+                preset_list.append(f"  {name}: {sender_count} senders")
+            elif label_count:
+                preset_list.append(f"  {name}: {label_count} labels")
+    preset_list_text = "\n".join(preset_list)
     
     parser = argparse.ArgumentParser(description='Run the full Gmail-to-Markdown-to-Podcast pipeline.',
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -302,17 +346,18 @@ def main():
 Directory names are auto-generated based on date range if not specified.
 
 Sender presets available:
-{preset_list}
+{preset_list_text}
 
 Examples:
   python run_full_pipeline.py --preset ai-news --after 20250616 --before 20250622
   python run_full_pipeline.py --senders user@example.com --after 2025-06-16
-  python run_full_pipeline.py --preset all --outdir weekly_digest --generate_podcast""")
+  python run_full_pipeline.py --preset all --outdir weekly_digest --generate_podcast
+  python run_full_pipeline.py --preset example_ai_labels --generate_podcast""")
     
     # Sender arguments - either preset or explicit list
     sender_group = parser.add_mutually_exclusive_group(required=True)
-    sender_group.add_argument('--preset', choices=list(SENDER_PRESETS.keys()), 
-                             help='Use a preset group of senders')
+    sender_group.add_argument('--preset', choices=all_preset_names, 
+                             help='Use a preset group (supports both senders and labels)')
     sender_group.add_argument('--senders', nargs='+', 
                              help='List of sender email addresses (space-separated)')
     
@@ -343,12 +388,30 @@ Examples:
     
     args = parser.parse_args()
     
-    # Get senders list from preset or explicit list
+    # Get senders and labels from preset or explicit list
     if args.preset:
-        senders = SENDER_PRESETS[args.preset]
-        print(f"Using preset '{args.preset}' with {len(senders)} senders")
+        preset_config = get_preset_config(args.preset)
+        if not preset_config:
+            print(f"Preset '{args.preset}' not found.")
+            return
+        
+        senders = preset_config['senders']
+        labels = preset_config['labels']
+        
+        # Print what we're using
+        parts = []
+        if senders:
+            parts.append(f"{len(senders)} senders")
+        if labels:
+            parts.append(f"{len(labels)} labels")
+        print(f"Using preset '{args.preset}' with {', '.join(parts)}")
+        
+        if not senders and not labels:
+            print(f"Preset '{args.preset}' has no senders or labels configured.")
+            return
     else:
         senders = args.senders
+        labels = []
     
     # Parse dates to Gmail API format
     after_parsed = parse_date(args.after) if args.after else None
@@ -388,7 +451,7 @@ Examples:
         service = authenticate_gmail()
         # Step 1 & 2: Fetch and filter
         relevant_ids, _ = fetch_and_filter_ids(
-            service, senders, after_parsed, before_parsed, filter_description, args.tempdir, args.skip_llm_filter, args.llm_filter_on_body
+            service, senders, labels, after_parsed, before_parsed, filter_description, args.tempdir, args.skip_llm_filter, args.llm_filter_on_body
         )
         # Step 3: Download .eml files
         print(f"Downloading .eml files to {eml_dir}...")
