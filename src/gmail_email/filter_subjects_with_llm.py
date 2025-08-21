@@ -3,7 +3,8 @@ load_dotenv()
 
 import os
 import pickle
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -53,23 +54,25 @@ Email: {email}
 
 Should this email be kept? Answer YES or NO and explain briefly why.
 """
-    print(prompt)
-    
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
-            max_output_tokens=50,
-            temperature=0
-        )
+    print("Prompt:", prompt)
+    api_key = os.getenv('GEMINI_API_KEY')
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
     )
-    try:
-        answer = response.text
-        return 'YES' in answer.upper()
-    except ValueError as e:
-        print(f"⚠️  LLM filtering issue: {e}")
-        print("Defaulting to include email (fail-safe)")
-        return True  # Include by default if filtering fails
+    print("Response:", response)
+    # Check for valid candidates and parts before accessing text
+    if hasattr(response, "candidates") and response.candidates:
+        candidate = response.candidates[0]
+        if hasattr(candidate, "content") and candidate.content and hasattr(candidate.content, "parts") and candidate.content.parts:
+            part = candidate.content.parts[0]
+            if hasattr(part, "text") and part.text:
+                answer = part.text
+                return 'YES' in answer.upper()
+    print("No valid text response from Gemini. Full response:", response)
+    print("⚠️  LLM filtering issue - defaulting to include email (fail-safe)")
+    return True  # Include by default if filtering fails
 
 
 def main():
@@ -77,7 +80,6 @@ def main():
     if not api_key:
         print("Please set the GEMINI_API_KEY environment variable.")
         return
-    genai.configure(api_key=api_key)
 
     filter_description = input("Enter a human-readable filter for email subjects: ")
     service = authenticate_gmail()

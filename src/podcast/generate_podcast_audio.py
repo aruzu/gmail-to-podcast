@@ -2,7 +2,7 @@ import os
 import re
 from google import genai
 from google.genai import types
-import google.generativeai as standard_genai
+# Only using new google.genai SDK for compatibility
 import argparse
 from dotenv import load_dotenv
 import wave
@@ -13,9 +13,15 @@ try:
     from pydub import AudioSegment
     from pydub.effects import normalize
     AUDIO_AVAILABLE = True
-    print("✅ Audio processing ready")
+    try:
+        print("✅ Audio processing ready")
+    except UnicodeEncodeError:
+        print("Audio processing ready")
 except ImportError as e:
-    print(f"⚠️  Audio processing issue: {e}")
+    try:
+        print(f"⚠️  Audio processing issue: {e}")
+    except UnicodeEncodeError:
+        print(f"WARNING: Audio processing issue: {e}")
     AUDIO_AVAILABLE = False
 
 load_dotenv()

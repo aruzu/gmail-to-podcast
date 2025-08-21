@@ -20,11 +20,8 @@ from gmail_email.filter_subjects_with_llm import fetch_subject, ask_llm
 from gmail_email.download_eml_files import download_eml
 from gmail_email.eml_to_markdown import convert_all_eml_to_markdown
 # Import podcast generation functions
-try:
-    from podcast.generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
-    print("Using enhanced podcast script generator")
-except ImportError:
-    print("Error: Could not import podcast script generator")
+from podcast.generate_podcast_script import read_markdown_files, generate_podcast_script, save_podcast_script
+print("Using enhanced podcast script generator")
 
 try:
     from podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
@@ -40,7 +37,7 @@ try:
 except ImportError:
     HAS_VIDEO = False
     print("Warning: moviepy not installed. Video generation will be skipped.")
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 from googleapiclient.errors import HttpError
 load_dotenv()
@@ -273,12 +270,12 @@ def generate_podcast_from_markdown(md_outdir, output_dir="podcast_output", durat
     
     # Step 1: Generate podcast script
     print(f"Generating {duration_minutes}-minute podcast script...")
-    markdown_content = read_markdown_files(md_outdir)
-    if not markdown_content:
+    markdown_grouped = read_markdown_files(md_outdir)
+    if not markdown_grouped:
         print("No markdown files found for podcast generation.")
         return False
     
-    script = generate_podcast_script(markdown_content, duration_minutes)
+    script = generate_podcast_script(markdown_grouped, duration_minutes)
     save_podcast_script(script, script_path)
     
     # Step 2: Generate audio
@@ -451,8 +448,7 @@ Examples:
         print("Please set the GEMINI_API_KEY environment variable for script and audio generation.")
         return
     
-    if gemini_api_key:
-        genai.configure(api_key=gemini_api_key)
+    # Note: New SDK doesn't need configure call, API key passed directly to client
 
     if not args.skip_markdown:
         filter_description = args.filter or (input("Enter a human-readable filter for email subjects/bodies: ") if not args.skip_llm_filter else None)
