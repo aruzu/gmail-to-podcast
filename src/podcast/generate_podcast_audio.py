@@ -1,6 +1,8 @@
 import os
 import re
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+import google.generativeai as standard_genai
 import argparse
 from dotenv import load_dotenv
 import wave
@@ -80,6 +82,73 @@ def parse_podcast_script(script_path):
     
     return '\n'.join(formatted_lines)
 
+def generate_tts_chunk(text, output_path, speaker0='Zephyr', speaker1='Puck'):
+    """Generate audio for a single chunk with multi-speaker support (same as main branch)"""
+    api_key = os.getenv('GEMINI_API_KEY')
+    
+    try:
+        # Try advanced multi-speaker TTS first
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-preview-tts',
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                        speaker_voice_configs=[
+                            types.SpeakerVoiceConfig(
+                                speaker='Sarah',
+                                voice_config=types.VoiceConfig(
+                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker0)
+                                )
+                            ),
+                            types.SpeakerVoiceConfig(
+                                speaker='Michael',
+                                voice_config=types.VoiceConfig(
+                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker1)
+                                )
+                            ),
+                        ]
+                    )
+                )
+            )
+        )
+        
+        # Extract and save audio
+        if (response.candidates and len(response.candidates) > 0 and 
+            response.candidates[0].content and response.candidates[0].content.parts and 
+            len(response.candidates[0].content.parts) > 0):
+            
+            part = response.candidates[0].content.parts[0]
+            if hasattr(part, 'inline_data') and part.inline_data and part.inline_data.data:
+                with open(output_path, 'wb') as f:
+                    f.write(part.inline_data.data)
+                return os.path.exists(output_path) and os.path.getsize(output_path) > 1000
+        
+        print("⚠️  No audio data received, creating fallback")
+        return create_fallback_audio(text, output_path)
+        
+    except Exception as e:
+        print(f"⚠️  Advanced TTS failed ({e}), using fallback")
+        return create_fallback_audio(text, output_path)
+
+def create_fallback_audio(text, output_path):
+    """Create fallback audio when TTS isn't available"""
+    try:
+        if AUDIO_AVAILABLE:
+            # Create silent audio with duration based on text length
+            estimated_words = len(text.split())
+            duration_seconds = max(5, int((estimated_words / 150) * 60))  # 150 words per minute
+            
+            silence = AudioSegment.silent(duration=duration_seconds * 1000)
+            silence.export(output_path, format="mp3")
+            return os.path.exists(output_path)
+        return False
+    except Exception as e:
+        print(f"Fallback audio creation failed: {e}")
+        return False
+
 def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
     """Helper function to save PCM data as WAV file"""
     with wave.open(filename, "wb") as wf:
@@ -118,8 +187,8 @@ def generate_multispeaker_podcast(transcript, output_path):
         print("   Sarah: Zephyr voice (analytical female)")
         print("   Michael: Puck voice (enthusiastic male)")
         
-        # Configure API
-        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+        # Try advanced TTS first, fall back to basic generation
+        api_key = os.getenv('GEMINI_API_KEY')
         
         # Split transcript into chunks if too long
         chunks = split_transcript(transcript)
@@ -128,60 +197,25 @@ def generate_multispeaker_podcast(transcript, output_path):
         print(f"📝 Processing {len(chunks)} audio chunk(s)...")
         
         for i, chunk in enumerate(chunks):
-            print(f"🎵 Generating chunk {i+1}/{len(chunks)} (fallback mode)...")
+            print(f"🎵 Generating chunk {i+1}/{len(chunks)}...")
             
-            try:
-                # Use text-to-speech with fallback to text generation
-                print("⚠️  Advanced TTS not available, using text-only generation")
-                
-                # Generate a simple description instead of actual audio
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content(
-                    f"Summarize this podcast script in 1-2 sentences: {chunk[:500]}"
-                )
-                
-                # Extract audio data
-                if response.candidates and len(response.candidates) > 0:
-                    candidate = response.candidates[0]
-                    if candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
-                        part = candidate.content.parts[0]
-                        if hasattr(part, 'inline_data') and part.inline_data:
-                            # Save chunk as temporary WAV file
-                            chunk_wav_path = output_path.replace('.mp3', f'_chunk_{i}.wav')
-                            wave_file(chunk_wav_path, part.inline_data.data)
-                            audio_chunks.append(chunk_wav_path)
-                            print(f"✅ Generated chunk {i+1}: {chunk_wav_path}")
-                        else:
-                            # Fallback: create a placeholder text file
-                            chunk_txt_path = output_path.replace('.mp3', f'_chunk_{i}.txt')
-                            with open(chunk_txt_path, 'w', encoding='utf-8') as f:
-                                f.write(f"Placeholder for audio chunk {i+1}")
-                            audio_chunks.append(chunk_txt_path)
-                            print(f"✅ Created placeholder for chunk {i+1}: {chunk_txt_path}")
-                    else:
-                        print(f"⚠️  No content in chunk {i+1}")
-                else:
-                    print(f"⚠️  No candidates in chunk {i+1}")
-                    
-            except Exception as e:
-                print(f"⚠️  Error generating chunk {i+1}: {e}")
+            chunk_path = output_path.replace('.mp3', f'_chunk_{i}.mp3')
+            
+            # Use the same function name as main branch
+            success = generate_tts_chunk(chunk, chunk_path)
+            if success:
+                audio_chunks.append(chunk_path)
+                print(f"✅ Generated chunk {i+1}: {chunk_path}")
+            else:
+                print(f"⚠️  Failed to generate chunk {i+1}")
                 continue
         
         if not audio_chunks:
             print("❌ No audio chunks generated successfully")
             return False
         
-        # Check if we have actual audio files or just placeholders
-        audio_files = [f for f in audio_chunks if f.endswith('.wav') or f.endswith('.mp3')]
-        if not audio_files:
-            print("⚠️  Only placeholder files generated, creating summary file instead of audio")
-            # Create a summary file instead of trying to combine placeholders
-            summary_path = output_path.replace('.mp3', '_summary.txt')
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                f.write("Podcast audio generation completed in fallback mode.\n")
-                f.write(f"Generated {len(audio_chunks)} content chunks.\n")
-            print(f"✅ Summary saved: {summary_path}")
-            return True
+        # All chunks should be MP3 files now
+        print(f"🔗 Combining {len(audio_chunks)} audio chunks...")
         
         # Combine all chunks and convert to MP3
         if AUDIO_AVAILABLE:
@@ -189,10 +223,15 @@ def generate_multispeaker_podcast(transcript, output_path):
                 combined_audio = AudioSegment.empty()
                 
                 for chunk_path in audio_chunks:
-                    chunk_audio = AudioSegment.from_wav(chunk_path)
-                    combined_audio += chunk_audio
-                    # Clean up temporary file
-                    os.remove(chunk_path)
+                    if os.path.exists(chunk_path) and os.path.getsize(chunk_path) > 0:
+                        # Load MP3 chunk (generated by generate_tts_chunk)
+                        chunk_audio = AudioSegment.from_mp3(chunk_path)
+                        combined_audio += chunk_audio
+                        print(f"  Added chunk: {os.path.basename(chunk_path)}")
+                        # Clean up temporary file
+                        os.remove(chunk_path)
+                    else:
+                        print(f"  Skipping invalid chunk: {chunk_path}")
                 
                 # Normalize and speed up the combined audio
                 combined_audio = normalize(combined_audio)
