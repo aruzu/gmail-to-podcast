@@ -1,8 +1,8 @@
 import os
 import re
-import google.generativeai as genai
+from google import genai
 from google.genai import types
-from google import genai as google_genai
+# Only using new google.genai SDK for compatibility
 import argparse
 from dotenv import load_dotenv
 import wave
@@ -13,9 +13,15 @@ try:
     from pydub import AudioSegment
     from pydub.effects import normalize
     AUDIO_AVAILABLE = True
-    print("✅ Audio processing ready")
+    try:
+        print("✅ Audio processing ready")
+    except UnicodeEncodeError:
+        print("Audio processing ready")
 except ImportError as e:
-    print(f"⚠️  Audio processing issue: {e}")
+    try:
+        print(f"⚠️  Audio processing issue: {e}")
+    except UnicodeEncodeError:
+        print(f"WARNING: Audio processing issue: {e}")
     AUDIO_AVAILABLE = False
 
 load_dotenv()
@@ -82,29 +88,17 @@ def parse_podcast_script(script_path):
     
     return '\n'.join(formatted_lines)
 
-def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
-    """Helper function to save PCM data as WAV file"""
-    with wave.open(filename, "wb") as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(rate)
-        wf.writeframes(pcm)
-
-def generate_multispeaker_podcast(transcript, output_path):
-    """Generate podcast audio using Gemini TTS multi-speaker API"""
-    
+def generate_tts_chunk(text, output_path, speaker0='Zephyr', speaker1='Puck'):
+    """Generate audio for a single chunk with multi-speaker support, with detailed error logging and PCM-to-MP3 conversion."""
+    import json
+    import tempfile
+    api_key = os.getenv('GEMINI_API_KEY')
+    model_name = 'gemini-2.5-flash-preview-tts'
+    client = genai.Client(api_key=api_key)
     try:
-        print("🎤 Generating multi-speaker podcast audio...")
-        print("   Sarah: Zephyr voice (analytical female)")
-        print("   Michael: Puck voice (enthusiastic male)")
-        
-        # Create client
-        client = google_genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
-        
-        # Generate with multi-speaker configuration
         response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=transcript,
+            model=model_name,
+            contents=text,
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
@@ -113,17 +107,13 @@ def generate_multispeaker_podcast(transcript, output_path):
                             types.SpeakerVoiceConfig(
                                 speaker='Sarah',
                                 voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name='zephyr',
-                                    )
+                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker0)
                                 )
                             ),
                             types.SpeakerVoiceConfig(
                                 speaker='Michael',
                                 voice_config=types.VoiceConfig(
-                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                        voice_name='puck',
-                                    )
+                                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=speaker1)
                                 )
                             ),
                         ]
@@ -131,48 +121,143 @@ def generate_multispeaker_podcast(transcript, output_path):
                 )
             )
         )
-        
-        # Extract audio data
-        if response.candidates and len(response.candidates) > 0:
-            candidate = response.candidates[0]
-            if candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
-                part = candidate.content.parts[0]
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    # Save as WAV first
-                    wav_path = output_path.replace('.mp3', '.wav')
-                    wave_file(wav_path, part.inline_data.data)
-                    
-                    print(f"✅ Generated multi-speaker audio: {wav_path}")
-                    
-                    # Convert to MP3 if needed
-                    if output_path.endswith('.mp3') and AUDIO_AVAILABLE:
-                        try:
-                            audio = AudioSegment.from_wav(wav_path)
-                            # Normalize audio levels
-                            audio = normalize(audio)
-                            # Speed up by 10% for faster pacing
-                            audio = audio._spawn(audio.raw_data, overrides={
-                                "frame_rate": int(audio.frame_rate * 1.1)
-                            }).set_frame_rate(audio.frame_rate)
-                            
-                            audio.export(output_path, format="mp3", bitrate="192k")
-                            print(f"✅ Converted to MP3 with 10% speed increase: {output_path}")
-                            
-                            # Calculate duration
-                            duration = len(audio) / 1000
-                            print(f"⏱️  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
-                        except Exception as e:
-                            print(f"⚠️  Could not convert to MP3: {e}")
-                    
-                    return True
-        
-        print("❌ No audio data found in response")
-        return False
-        
+        # Save the raw response for debugging
+        raw_response_path = output_path + ".response.json"
+        try:
+            with open(raw_response_path, 'w', encoding='utf-8') as f:
+                json.dump(response.to_dict() if hasattr(response, 'to_dict') else str(response), f, ensure_ascii=False, indent=2)
+            print(f"📝 Saved raw TTS API response to {raw_response_path}")
+        except Exception as e:
+            print(f"⚠️ Could not save raw TTS API response: {e}")
+        # Try to extract audio data
+        try:
+            data = response.candidates[0].content.parts[0].inline_data.data
+            mime_type = response.candidates[0].content.parts[0].inline_data.mime_type
+        except Exception as e:
+            print(f"❌ Error extracting audio data from TTS response for chunk {output_path}: {e}")
+            return False
+        if not data or len(data) < 1000:
+            print(f"❌ No valid audio returned for chunk {output_path} (size: {len(data) if data else 0})")
+            return False
+        # If the data is PCM, convert to MP3
+        if mime_type.startswith('audio/L16'):
+            # Save PCM as WAV, then convert to MP3
+            try:
+                import wave
+                from pydub import AudioSegment
+                # Write PCM to temp WAV file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as wav_file:
+                    wav_path = wav_file.name
+                    with wave.open(wav_file, 'wb') as wf:
+                        wf.setnchannels(1)  # mono
+                        wf.setsampwidth(2)  # 16-bit
+                        wf.setframerate(24000)  # 24kHz
+                        wf.writeframes(data)
+                # Convert WAV to MP3
+                audio = AudioSegment.from_wav(wav_path)
+                audio.export(output_path, format='mp3')
+                print(f"🎧 Saved chunk: {output_path} (converted from PCM, size: {os.path.getsize(output_path)})")
+                os.remove(wav_path)
+                return True
+            except Exception as e:
+                print(f"❌ Error converting PCM to MP3 for chunk {output_path}: {e}")
+                return False
+        else:
+            # If not PCM, just save as is
+            with open(output_path, 'wb') as f:
+                f.write(data)
+            print(f"🎧 Saved chunk: {output_path} (size: {len(data)})")
+            return True
     except Exception as e:
-        print(f"❌ Error generating multi-speaker audio: {e}")
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            print("   ⚠️  Hit quota limit. Try again later.")
+        print(f"❌ Exception during TTS API call for chunk {output_path}: {e}")
+        return False
+
+def create_fallback_audio(text, output_path):
+    """Create fallback audio when TTS isn't available"""
+    try:
+        if AUDIO_AVAILABLE:
+            # Create silent audio with duration based on text length
+            estimated_words = len(text.split())
+            duration_seconds = max(5, int((estimated_words / 150) * 60))  # 150 words per minute
+            
+            silence = AudioSegment.silent(duration=duration_seconds * 1000)
+            silence.export(output_path, format="mp3")
+            return os.path.exists(output_path)
+        return False
+    except Exception as e:
+        print(f"Fallback audio creation failed: {e}")
+        return False
+
+def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
+    """Helper function to save PCM data as WAV file"""
+    with wave.open(filename, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(rate)
+        wf.writeframes(pcm)
+
+def split_transcript(transcript, max_chars=7500):
+    """Split long transcript into ~10-minute chunks (default 7,500 chars)."""
+    import textwrap
+    return textwrap.wrap(transcript, width=max_chars, break_long_words=False, break_on_hyphens=False)
+
+def generate_multispeaker_podcast(transcript, output_path, lang='en'):
+    """Split transcript into chunks, run TTS, and merge the audio as MP3."""
+    try:
+        print("🎤 Generating podcast audio with Gemini API TTS (multi-speaker, chunked)...")
+        from pathlib import Path
+        base_dir = Path(output_path).parent
+        os.makedirs(base_dir, exist_ok=True)
+        chunks = split_transcript(transcript)
+        chunk_paths = []
+        valid_chunk_paths = []
+        for i, chunk_text in enumerate(chunks):
+            chunk_path = str(base_dir / f"chunk_{i}_{lang}.mp3")
+            success = generate_tts_chunk(chunk_text, chunk_path)
+            chunk_paths.append(chunk_path)
+            if success and os.path.exists(chunk_path) and os.path.getsize(chunk_path) > 1000:
+                valid_chunk_paths.append(chunk_path)
+            else:
+                print(f"⚠️ Skipping invalid or empty chunk: {chunk_path}")
+        if not valid_chunk_paths:
+            print("❌ No valid audio chunks produced. Aborting merge.")
+            return False
+        # Merge all valid audio chunks
+        final_audio = AudioSegment.empty()
+        for chunk_path in valid_chunk_paths:
+            try:
+                audio = AudioSegment.from_file(chunk_path, format="mp3")
+                if len(audio) == 0:
+                    print(f"⚠️ Chunk {chunk_path} is empty after loading, skipping.")
+                    continue
+                final_audio += audio
+            except Exception as e:
+                print(f"⚠️ Failed to load chunk {chunk_path}: {e}")
+        if len(final_audio) == 0:
+            print("❌ No valid audio to export. Aborting.")
+            return False
+        # Export final audio with metadata
+        title_tag = os.path.splitext(os.path.basename(output_path))[0]
+        final_audio.export(output_path, format="mp3", tags={"title": title_tag, "artist": " "})
+        print(f"✅ Final podcast saved at: {output_path}")
+        
+        # Clean up temporary chunk files
+        print("🧹 Cleaning up temporary audio chunks...")
+        for chunk_path in chunk_paths:
+            if os.path.exists(chunk_path):
+                try:
+                    os.remove(chunk_path)
+                    # Also remove .response.json files if they exist
+                    response_file = chunk_path + ".response.json"
+                    if os.path.exists(response_file):
+                        os.remove(response_file)
+                except Exception as e:
+                    print(f"⚠️ Could not remove {chunk_path}: {e}")
+        print(f"🗑️  Removed {len([p for p in chunk_paths if not os.path.exists(p)])} temporary chunk files")
+            
+        return True
+    except Exception as e:
+        print(f"❌ Error generating podcast audio: {e}")
         return False
 
 # Backward compatibility functions for pipeline

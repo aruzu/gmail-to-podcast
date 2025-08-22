@@ -114,17 +114,21 @@ def parse_script_for_timing(script_path):
     
     for line in lines:
         line = line.strip()
-        if line.startswith('[SARAH]:'):
+        
+        # Handle multiple speaker formats for better compatibility
+        if line.startswith('[SARAH]:') or line.startswith('[Speaker 0]'):
+            text = line.replace('[SARAH]:', '').replace('[Speaker 0]', '').strip()
             segments.append({
                 'speaker': 'SARAH',
-                'text': line.replace('[SARAH]:', '').strip(),
-                'estimated_duration': len(line.replace('[SARAH]:', '').strip()) * 0.05  # rough estimate
+                'text': text,
+                'estimated_duration': len(text) * 0.05  # rough estimate
             })
-        elif line.startswith('[MICHAEL]:'):
+        elif line.startswith('[MICHAEL]:') or line.startswith('[Speaker 1]'):
+            text = line.replace('[MICHAEL]:', '').replace('[Speaker 1]', '').strip()
             segments.append({
                 'speaker': 'MICHAEL', 
-                'text': line.replace('[MICHAEL]:', '').strip(),
-                'estimated_duration': len(line.replace('[MICHAEL]:', '').strip()) * 0.05
+                'text': text,
+                'estimated_duration': len(text) * 0.05
             })
         elif line.startswith('[PAUSE]'):
             segments.append({

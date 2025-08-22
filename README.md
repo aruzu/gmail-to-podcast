@@ -109,17 +109,27 @@ python src/run_full_pipeline.py --senders news@site.com info@blog.org --days-bac
 
 ```bash
 # Skip LLM filtering (process all emails)
-python src/run_full_pipeline.py --preset ai-news --days-back 7 --skip_llm_filter
+python src/run_full_pipeline.py --preset newsletters --days-back 7 --skip_llm_filter
 
 # Custom output directory
-python src/run_full_pipeline.py --preset tech --outdir weekly_tech_digest --generate_podcast
+python src/run_full_pipeline.py --preset newsletters --outdir weekly_digest --generate_podcast
 
-# Filter with email body content
-python src/run_full_pipeline.py --preset all --days-back 7 --llm_filter_on_body
+# Filter with email body content (more thorough but slower)
+python src/run_full_pipeline.py --preset newsletters --days-back 7 --llm_filter_on_body
 
-# Custom podcast duration
-python src/run_full_pipeline.py --preset news --days-back 7 --generate_podcast --podcast_duration 45
+# Custom podcast duration (5-60 minutes recommended)
+python src/run_full_pipeline.py --preset newsletters --days-back 7 --generate_podcast --podcast_duration 15
+
+# Mark processed emails as read and archive them
+python src/run_full_pipeline.py --preset newsletters --days-back 7 --mark-processed
 ```
+
+### Podcast Quality Tips
+
+- **Duration**: 5-15 minutes work best for newsletter content
+- **Content filtering**: Use specific, descriptive filters for better results
+- **Email selection**: Process 3-7 days of content for optimal podcast length
+- **Audio quality**: Ensure stable internet connection for TTS generation
 
 ### Working with Existing Files
 
