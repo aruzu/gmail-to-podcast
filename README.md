@@ -228,8 +228,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Gmail API for email access
-- OpenAI for intelligent filtering and script generation
-- Google Gemini for natural voice synthesis
+- Google Gemini for intelligent filtering, script generation, and voice synthesis
 - FFmpeg for audio/video processing
 
 ## 🐛 Troubleshooting
