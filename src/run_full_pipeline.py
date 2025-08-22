@@ -158,8 +158,8 @@ def generate_dir_names(after_date, before_date):
         dir_suffix = datetime.now().strftime("%Y%m%d")
     
     return {
-        'eml': f"{dir_suffix}_eml",
-        'markdown': f"{dir_suffix}_markdown"
+        'eml': f"output/{dir_suffix}_eml",
+        'markdown': f"output/{dir_suffix}_markdown"
     }
 
 def fetch_body(service, msg_id):
@@ -387,7 +387,7 @@ Examples:
     parser.add_argument('--skip_markdown', action='store_true', help='Skip email processing, generate podcast from existing markdown')
     
     # Other options
-    parser.add_argument('--tempdir', type=str, default='.', help='Directory for temp files (default: current dir)')
+    parser.add_argument('--tempdir', type=str, default='logs', help='Directory for temp files (default: logs)')
     parser.add_argument('--mark-processed', action='store_true', 
                         help='Mark emails as read and archive them after processing')
     
@@ -449,6 +449,10 @@ Examples:
         return
     
     # Note: New SDK doesn't need configure call, API key passed directly to client
+    
+    # Ensure output and temp directories exist
+    os.makedirs('output', exist_ok=True)
+    os.makedirs(args.tempdir, exist_ok=True)
 
     if not args.skip_markdown:
         filter_description = args.filter or (input("Enter a human-readable filter for email subjects/bodies: ") if not args.skip_llm_filter else None)
