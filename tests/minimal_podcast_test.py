@@ -53,7 +53,7 @@ Companies are investing billions in this technology.'''
     ]
 
 def main():
-    print("🧪 Minimal Podcast Generation Test")
+    print("[TEST] Minimal Podcast Generation Test")
     print("Testing: 5-minute conversation + audio generation")
     print("=" * 50)
     
@@ -72,11 +72,16 @@ def main():
         genai.configure(api_key=gemini_key)
         
         # Import here to avoid issues if modules aren't ready
-        from generate_podcast_script import generate_podcast_script
+        from podcast.generate_podcast_script import generate_podcast_script
         
         # Create sample content
-        markdown_content = create_test_markdown()
-        print(f"📄 Using {len(markdown_content)} sample articles")
+        markdown_list = create_test_markdown()
+        # Convert to grouped format expected by the function
+        markdown_content = {
+            "TechNews": [markdown_list[0]],
+            "ScienceDaily": [markdown_list[1]]
+        }
+        print(f"📄 Using {len(markdown_list)} sample articles")
         
         # Generate 5-minute script
         script = generate_podcast_script(markdown_content, duration_minutes=5)
@@ -107,7 +112,7 @@ def main():
     print(f"\n🎵 Test 2: Generate audio with Gemini TTS...")
     try:
         # Note: No need to configure - the genai.Client will use the API key directly
-        from generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
+        from podcast.generate_podcast_audio import parse_podcast_script, create_podcast_audio, combine_audio_segments
         
         # Parse script
         segments = parse_podcast_script(script_path)

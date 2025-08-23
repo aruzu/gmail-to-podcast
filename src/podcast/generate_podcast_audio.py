@@ -215,10 +215,15 @@ def generate_multispeaker_podcast(transcript, output_path, lang='en'):
             chunk_path = str(base_dir / f"chunk_{i}_{lang}.mp3")
             success = generate_tts_chunk(chunk_text, chunk_path)
             chunk_paths.append(chunk_path)
-            if success and os.path.exists(chunk_path) and os.path.getsize(chunk_path) > 1000:
-                valid_chunk_paths.append(chunk_path)
-            else:
-                print(f"⚠️ Skipping invalid or empty chunk: {chunk_path}")
+            
+            if not success or not os.path.exists(chunk_path) or os.path.getsize(chunk_path) <= 1000:
+                print(f"❌ CRITICAL: Chunk {i} failed to generate properly (path: {chunk_path})")
+                print(f"❌ Cannot continue with incomplete audio. Aborting podcast generation.")
+                return False
+            
+            valid_chunk_paths.append(chunk_path)
+            print(f"✅ Chunk {i} generated successfully")
+        
         if not valid_chunk_paths:
             print("❌ No valid audio chunks produced. Aborting merge.")
             return False
